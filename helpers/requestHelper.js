@@ -72,6 +72,33 @@ export function getData(path, token, callback) {
   req.on('error', error => callback(error, null));
 }
 
+export function patchData(path, token, data, callback) {
+  const options = {
+    host: host,
+    path: path,
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token
+    }
+  };
+
+  const req = https.request(options, res => {
+    let endpointData = '';
+
+    res.on('data', chunk => (endpointData += chunk));
+    res.on('end', () => {
+      if (res.statusCode === 200) callback(null, JSON.parse(endpointData));
+      else callback(JSON.parse(endpointData), null);
+    });
+  });
+
+  req.write(data);
+  req.end();
+
+  req.on('error', error => callback(error, null));
+}
+
 /**
  * Generates a DELETE request
  * @param {string} path the path, relative to the host, to which this request will be sent
