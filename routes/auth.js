@@ -1,15 +1,19 @@
 import express from 'express';
+import https from 'https';
+import querystring from 'querystring';
 
-import { getSubscription, saveSubscription, deleteSubscription } from '../helpers/dbHelper';
+import { getSubscription, saveSubscription, deleteSubscription,
+         getAccessToken, saveAccessToken, saveFromRefreshToken } from '../helpers/dbHelper';
 import { getAuthUrl, getTokenFromCode } from '../helpers/authHelper';
-import { postData, deleteData } from '../helpers/requestHelper';
-import { subscriptionConfiguration } from '../constants';
+import { getData, postData, deleteData, patchData } from '../helpers/requestHelper';
+import { subscriptionConfiguration, adalConfiguration,
+         tokenConfiguration } from '../constants';
 
 export const authRouter = express.Router();
 
 // Redirect to start page
 authRouter.get('/', (req, res) => {
-  res.redirect('/index.html');
+  res.redirect('/obs-api/index.html');
 });
 
 // Start authentication flow
@@ -20,42 +24,142 @@ authRouter.get('/signin', (req, res) => {
 // This route gets called at the end of the authentication flow.
 // It requests the subscription from Office 365, stores the subscription in a database,
 // and redirects the browser to the home page.
-authRouter.get('/callback', (req, res, next) => {
+authRouter.get('/authorise', (req, res, next) => {
   getTokenFromCode(req.query.code, (authenticationError, token) => {
     if (token) {
       // Request this subscription to expire one day from now.
       // Note: 1 day = 86400000 milliseconds
-      subscriptionConfiguration.expirationDateTime = new Date(Date.now() + 86400000).toISOString();
-
-      // Make the request to subscription service.
-      postData(
-        '/beta/subscriptions',
-        token.accessToken,
-        JSON.stringify(subscriptionConfiguration),
-        (requestError, subscriptionData) => {
-          if (subscriptionData) {
-            subscriptionData.userId = token.userId;
-            subscriptionData.accessToken = token.accessToken;
-            saveSubscription(subscriptionData, null);
-
-            // The name of the property coming from the service might change from
-            // subscriptionId to id in the near future.
-            res.redirect(
-              '/home.html?subscriptionId=' + subscriptionData.id +
-              '&userId=' + subscriptionData.userId
-            );
-          } else if (requestError) {
-            res.status(500);
-            next(requestError);
-          }
-        }
-      );
+      saveAccessToken(token)
+        .then(() => {
+          makeWebhookSubscription(token)
+            .then(() => {
+              res.redirect(
+                '/obs-api/home.html?subscriptionId=' + subscriptionData.id +
+                '&userId=' + subscriptionData.userId
+              );
+            })
+            .catch(err => {
+              reject(error);
+              res.status(500);
+              next(err);
+            });
+        })
+        .catch(err => {
+           console.log('saving token error', err);
+           reject(error);
+           res.status(500);
+           next(err);
+        });
+        // Make the request to subscription service.
     } else if (authenticationError) {
       res.status(500);
       next(authenticationError);
     }
   });
 });
+
+authRouter.patch('/subscription', (req, res, next) => {
+  getSubscription()
+    .then(subscription => {
+
+      let patchBody = {
+        expirationDateTime: (new Date((new Date()).getTime() + 4229 * 60 * 1000)).toISOString()
+      };
+
+      patchData(
+        `/v1.0/subscriptions/${subscription.id}`,
+        subscription.access_token,
+        JSON.stringify(patchBody),
+        (requestError, result) => {
+          if (requestError) {
+            return res.status(500).send(requestError);
+          }
+
+          res.status(204).send();
+          result.accessToken = subscription.access_token;
+          saveSubscription(result);
+        }
+      );
+    })
+    .catch(err => {
+      res.status(404).send("No active subscriptions available for regeneration");
+    });
+});
+
+authRouter.post('/subscription', (req, res, next) => {
+  getAccessToken()
+    .then(result => {
+      makeWebhookSubscription(result)
+        .then(response => res.send('Subscription success'))
+        .catch(err => res.status(500).send(err));
+    })
+    .catch(err => res.status(404).send(err));
+});
+
+authRouter.get('/refresh', (req, res, next) => {
+  getAccessToken()
+    .then(token => {
+      httpsRequest(
+        `${adalConfiguration.authority}/${tokenConfiguration.tokenUri}`,
+        {
+          method: 'post',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          data: {
+                client_id: adalConfiguration.clientID,
+                    scope: tokenConfiguration.scope,
+            refresh_token: token.refresh_token,
+             redirect_uri: adalConfiguration.redirectUri,
+               grant_Type: 'refresh_token',
+            client_secret: adalConfiguration.clientSecret
+          },
+          returnResponse: true
+        }
+      )
+      .then(response => {
+        try {
+          let reply = JSON.parse(response.body);
+          saveFromRefreshToken(reply);
+          
+        } catch(e) {
+          console.log('could not parse json body: ', e);
+        }
+        res.send();
+      })
+      .catch(err => {console.log(err);throw new Error(JSON.stringify(err))});
+    })
+    .catch(err => res.status(500).send(err));
+});
+
+authRouter.get('/event', (req, res) => {
+  getAccessToken()
+    .then(result => {
+      getData(
+        `/v1.0/me/events`,
+        result.token,
+        (requestError, endpointData) => {
+          if (endpointData) {
+        //    ioServer.to(subscriptionId).emit('notification_received', endpointData);
+            let formattedData = endpointData.value
+                                  .filter(event => {
+                                    return ((new Date(event.start.dateTime)).getTime() - (new Date()).getTime() > -3600000 ||
+                                            new Date(event.end.dateTime).getTime() > (new Date()).getTime()) &&
+                                            new Date(event.end.dateTime).getTime() < ((new Date()).getTime() + 24*60*60*1000);
+                                            
+                                  })
+                                  .sort((a, b) => (new Date(a.start.dateTime)).getTime() - (new Date(b.start.dateTime)).getTime());
+
+            res.send(formattedData);
+          } else if (requestError) {
+            res.status(500).send(requestError);
+          }
+        }
+      );
+    })
+    .catch(err => res.status(500).send(err));
+});
+
 
 // This route signs out the users by performing these tasks
 // Delete the subscription data from the database
@@ -81,3 +185,72 @@ authRouter.get('/signout/:subscriptionId', (req, res) => {
 
   res.redirect('https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=' + redirectUri);
 });
+
+function makeWebhookSubscription(token) {
+  return new Promise((resolve, reject) => {
+    subscriptionConfiguration.expirationDateTime = new Date(Date.now() + 4229 * 60 * 1000).toISOString();
+
+    postData(
+      '/v1.0/subscriptions',
+      token.accessToken || token.token,
+      JSON.stringify(subscriptionConfiguration),
+      (requestError, subscriptionData) => {
+        if (subscriptionData) {
+          subscriptionData.accessToken = token.accessToken || token.token;
+          subscriptionData.userId = token.userId || token.account;
+
+          saveSubscription(subscriptionData, null)
+            .then(() => resolve())
+            .catch(err => reject("could not save subscription: " + err));
+        } else if (requestError) {
+          reject(requestError);
+        }
+      }
+    );
+  });
+}
+
+function httpsRequest(url, opts) {
+  return new Promise((resolve, reject) => {
+    opts = opts || {};
+    let method = (opts.method || 'get').toUpperCase();
+    let options = {method: method};
+    let data = '';
+    let urlArr = url.split('/');
+    options.host = urlArr[2];
+    options.port = '443';
+    options.path = '/' + urlArr.slice(3).join('/');
+    if (opts.headers) {
+      options.headers = opts.headers;
+    }
+    options.headers = options.headers || {};
+    if (opts.data) {
+      data = querystring.stringify(opts.data);
+      options.headers = options.headers || {};
+      options.headers['Content-Length'] = Buffer.byteLength(data);
+    }
+
+    const req = https.request(options, res => {
+      let body = '';
+
+      res.on('data', chunk => {body += chunk});
+
+      res.on('end', () => {
+        if (opts && opts.returnResponse) {
+          return resolve({body: body, response: res});
+        }
+        resolve(body);
+      });
+    })
+
+    req.on('error', err => {
+      if (opts && opts.returnResponse) {
+        return reject({body: err, response: req});
+      }
+      reject(err);
+    });
+
+    req.write(data);
+    req.end();
+  });
+}
