@@ -29,8 +29,12 @@ export function getTokenFromCode(code, callback) {
     adalConfiguration.clientID,
     adalConfiguration.clientSecret,
     (error, token) => {
-      if (error) callback(error, null);
-      else callback(null, token);
+      if (error) {
+        callback(error, null);
+      }
+      else {
+        callback(null, token);
+      }
     }
   );
 }

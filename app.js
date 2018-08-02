@@ -5,6 +5,8 @@ import bodyParser from 'body-parser';
 
 import { authRouter } from './routes/auth';
 import { listenRouter } from './routes/listen';
+import VulaWebService from './helpers/vulaHelper';
+import { ocConsumer } from './helpers/ocHelper';
 
 export const app = express();
 
@@ -20,10 +22,9 @@ app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.use('/', authRouter);
-app.use('/listen', listenRouter);
+app.use('/obs-api/', express.static(path.join(__dirname, 'public')));
+app.use('/obs-api/', authRouter);
+app.use('/obs-api/notify', listenRouter);
 
 // catch 404 and forward to error handler
 app.use((req, res, next) => {

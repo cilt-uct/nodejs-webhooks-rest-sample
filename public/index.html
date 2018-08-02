@@ -1,11 +1,50 @@
 <head>
+  <meta charset="utf8">
+  <meta name="viewport" content="width=device-width">
   <title>Microsoft Graph Webhook</title>
+  <link rel="stylesheet" href="css/style.css">
 </head>
 
 <body>
-<button onclick="location.href='/signin'">
+<header>
+  <h2>OBS Dashboard</h2>
+</header>
+<main>
+  <section class="loading" id="nextEvent">
+    <h4>Next Event</h4>
+    <div class="loader">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <ul class="entityInfo">
+    </ul>
+  </section>
+  <section class="loading" id="token">
+    <h4>Token</h4>
+    <div class="loader">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <ul class="entityInfo">
+    </ul>
+  </section>
+  <section class="loading" id="subscriptions">
+    <h4>Subscriptions</h4>
+    <div class="loader">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+    <ul class="entityInfo">
+    </ul>
+  </section>
+</main>
+<button onclick="location.href='/obs-api/signin'">
   Sign in with a work or school account
 </button>
 
-<p>Once signing in, the app gets an accessToken which is used to subscribe <b>me/mailFolders('Inbox')/messages</b>.
+<p>Once signing in, the app gets an accessToken which is used to subscribe <b>me/mailFolders('Inbox')/messages</b>
+<script src="js/app.js"></script>
 </body>
