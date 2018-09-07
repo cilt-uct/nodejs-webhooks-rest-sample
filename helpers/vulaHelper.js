@@ -44,10 +44,6 @@ function VulaWebService() {
       }
     }
   });
-
-  this.login()
-    .then(() => this.prepareClients())
-    .catch(err => { throw new Error(err) });
 }
 
 VulaWebService.prototype = {
@@ -55,13 +51,13 @@ VulaWebService.prototype = {
     return new Promise((resolve, reject) => {
       soap.createClient(this.loginUrl, (err, client) => {
         if (err) {
-          return reject(err);
+          return reject({error: err});
         }
 
         this.authClient = client;
         this.authClient.login(this.credentials, (e, res) => {
           if (e) {
-            return reject(e);
+            return reject({error: e});
           }
 
           this.token = res.return;
@@ -87,6 +83,30 @@ VulaWebService.prototype = {
 
       this.uctClient = client;
       this.checkState();
+    });
+  },
+  prepareSakaiSoap: function() {
+    return new Promise(resolve => {
+      soap.createClient(this.sakaiSoapEndpoint, (err, client) => {
+        if (err) {
+          throw new Error(err);
+        }
+
+        this.sakaiClient = client;
+        resolve();
+      });
+    });
+  },
+  prepareUctSoap: function() {
+    return new Promise(resolve => {
+      soap.createClient(this.uctSoapEndpoint, (err, client) => {
+        if (err) {
+          throw new Error(err);
+        }
+
+        this.uctClient = client;
+        resolve();
+      });
     });
   },
   checkState: function() {
@@ -115,6 +135,31 @@ VulaWebService.prototype = {
       });
     });
   },
+  isSessionActive: function() {
+    return new Promise((resolve, reject) => {
+      if (!this.token) return resolve(false);
+      soap.createClient(this.sakaiSoapEndpoint, (err, client) => {
+        if (err) {
+          //return reject(err);
+          return resolve(false);
+        }
+
+        let params = {
+          sessionid: this.token,
+                eid: this.credentials.id
+        };
+
+        client.getSessionForCurrentUser(params, (e, res) => {
+          if (e) {
+            return resolve(false);
+          }
+
+          let isActive = res.return.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+          resolve(!!isActive);
+        });
+      });
+    });
+  },
   checkAuthClient: function() {
     return new Promise((resolve, reject) => {
       if (!this.token) {
@@ -137,7 +182,7 @@ VulaWebService.prototype = {
   checkUserByEid: function(eid) {
     return new Promise((resolve, reject) => {
       if (!this.sakaiClient) {
-        return reject('no client available');
+        return reject({error: 'no client available'});
       }
 
       let params = {
@@ -145,30 +190,63 @@ VulaWebService.prototype = {
               eid: eid
       };
 
-      this.sakaiClient.checkForUser(params, (err, res) => {
+      this.sakaiClient.checkForUser(params, (err, res, rawResponse, soapHeaders) => {
         if (err) {
-          return reject(err);
+          return reject({error: err, response: rawResponse, headers: soapHeaders});
         }
 
         resolve(res);
       });
     });
   },
-  getUserByEmail: function(email) {
+/*  getUserByEmail: function(email) {
     return new Promise((resolve, reject) => {
       httpsRequest(`https://srvslscet001.uct.ac.za/optout/search/${email}`)
         .then(result => {
           try {
             result = JSON.parse(result);
             (async () => {
-              result.vula.siteId = await this.getUserHome(result.vula.username);
-              resolve(result);
+              try {
+                result.vula.siteId = await this.getUserHome(result.vula.username);
+                resolve(result);
+              } catch(siteErr) {
+                console.log('home site query error', siteErr);
+                resolve(result);
+              }
             })();
           } catch(e) {
+            console.log('caught json error when checking for user by email:', result.vula.username);
+            console.log(result);
             resolve(result);
           }
         })
         .catch(err => {console.log('this error', err); reject(err)});
+    });
+  },*/
+  getUserByEmail: function(email) {
+    return new Promise((resolve, reject) => {
+      (async () => {
+        let result = await httpsRequest(`https://srvslscet001.uct.ac.za/optout/search/vula/${email}`);
+        try {
+          result = JSON.parse(result);
+          let isActive = await this.isSessionActive();
+          if (!isActive) {
+            await this.login();
+            await this.prepareSakaiSoap();
+            await this.prepareUctSoap();
+            isActive = await this.isSessionActive();
+          }
+          setTimeout(() => {
+            (async () => {
+              result.vula.siteId = await this.getUserHome(result.vula.username);
+              resolve(result);
+            })();
+          }, 300);
+        } catch(err) {
+           console.log('this error', err);
+           reject(err);
+        }
+      })();
     });
   },
   getUserHome: function(user) {
@@ -182,14 +260,14 @@ VulaWebService.prototype = {
            userid: user
       };
 
-      this.sakaiClient.getAllSitesForUser(params, (err, res) => {
+      this.sakaiClient.getAllSitesForUser(params, (err, res, rawResponse, soapHeaders) => {
         if (err) {
-          return reject(err);
+          return reject({error: err, response: rawResponse, headers: soapHeaders});
         }
 
         parseString(res.return, (e, json) => {
           if (e) {
-            return reject(e);
+            return reject({error: e});
           }
 
           let homeSite = json.list.item
@@ -208,8 +286,8 @@ VulaWebService.prototype = {
   addOBSTool: function(eid, siteId, ocSeries, ltiLaunchUrl) {
     return new Promise((resolve, reject) => {
       (async () => {
-        if (!eid && !seriesId) return reject('no user or site provided');
-        if (!ocSeries) return reject('no Opencast series provided');
+        if (!eid && !seriesId) return reject({error: 'no user or site provided'});
+        if (!ocSeries) return reject({error: 'no Opencast series provided'});
 
         if (!siteId) {
           siteId = await this.getUserHome(eid);
@@ -227,9 +305,10 @@ type=personal
 tool=https://${ocConfiguration.hostname}/ltitools/manage/`
         };
 
-        this.uctClient.addExternalToolToSite(params, (err, result) => {
+        this.uctClient.addExternalToolToSite(params, (err, result, rawResponse, soapHeader, rawReq) => {
           if (err) {
-            return reject(err);
+            console.log('error creating tool', soapHeader, rawResponse);
+            return reject({error: err, response: rawResponse, headers: soapHeaders});
           }
           resolve(result.return);
         });
@@ -237,10 +316,14 @@ tool=https://${ocConfiguration.hostname}/ltitools/manage/`
     });
   },
   close: function() {
-    this.checkAuthClient()
-      .then(() => {
-        this.authClient.logout(this.token);
-      });
+    return new Promise(resolve => {
+      this.checkAuthClient()
+        .catch()
+        .then(() => {
+          this.authClient.logout({sessionid: this.token}, (err, res) => {});
+          resolve();
+        });
+    });
   },
   on: function(ev, fnObj) {
     if (ev === 'ready' && this.ready) {

@@ -6,9 +6,11 @@ import { getSubscription, saveSubscription, deleteSubscription,
          getAccessToken, saveAccessToken, saveFromRefreshToken } from '../helpers/dbHelper';
 import { getAuthUrl, getTokenFromCode } from '../helpers/authHelper';
 import { getData, postData, deleteData, patchData } from '../helpers/requestHelper';
+import VulaWebService from '../helpers/vulaHelper';
 import { ocConsumer } from '../helpers/ocHelper';
 import { subscriptionConfiguration, adalConfiguration,
          tokenConfiguration } from '../constants';
+import { prepareSites } from '../routes/listen.js';
 
 export const authRouter = express.Router();
 
@@ -152,9 +154,9 @@ authRouter.get('/event', (req, res) => {
             let filteredFields = ['id','hasAttachments','subject','isAllDay','type','webLink','body','start','end','organizer','attachments'];
             let formattedData = endpointData.value
                                   .filter(event => {
-                                    return ((new Date(event.start.dateTime)).getTime() - (new Date()).getTime() > -7200000 ||
-                                            new Date(event.end.dateTime).getTime() > (new Date()).getTime()) &&
-                                            new Date(event.end.dateTime).getTime() < ((new Date()).getTime() + 24*60*60*1000);
+                                    return (((new Date(event.start.dateTime)).getTime() - (new Date()).getTime() > -7200000 ||
+                                            new Date(event.end.dateTime).getTime() > (new Date()).getTime()) && event.organizer.emailAddress.address !== 'One_Button_Studio@uct.ac.za');// &&
+//                                            new Date(event.end.dateTime).getTime() < ((new Date()).getTime() + 24*60*60*1000);
                                   })
                                   .sort((a, b) => (new Date(a.start.dateTime)).getTime() - (new Date(b.start.dateTime)).getTime())
                                   .map(event => {
@@ -196,6 +198,166 @@ authRouter.get('/event', (req, res) => {
       );
     })
     .catch(err => res.status(500).send(err));
+});
+
+authRouter.get('/event/series', (req, res) => {
+  getAccessToken()
+    .then(result => {
+      getData(
+        `/v1.0/me/events?$top=50`,
+        result.token,
+        (requestError, endpointData) => {
+          if (endpointData) {
+            let filteredFields = ['id','hasAttachments','subject','isAllDay','type','webLink','body','start','end','organizer','attachments'];
+            let formattedData = endpointData.value
+//                                  .filter(event => {
+//                                    return ((new Date(event.start.dateTime)).getTime() - (new Date()).getTime() > -7200000 ||
+//                                            new Date(event.end.dateTime).getTime() > (new Date()).getTime()) &&
+//                                            new Date(event.end.dateTime).getTime() < ((new Date()).getTime() + 24*60*60*1000);
+//                                  })
+                                  .sort((a, b) => (new Date(a.start.dateTime)).getTime() - (new Date(b.start.dateTime)).getTime())
+                                  .map(event => {
+                                    let returnedEvent = filteredFields.reduce((result, field) => {
+                                      result[field] = event[field] || null;
+                                      return result;
+                                    }, {});
+                                    return returnedEvent;
+                                  });
+
+            const promises = formattedData.map(async (event) => {
+              event.ocSeries = await ocConsumer.getUserSeries(event.organizer.emailAddress.address);
+              return event;
+            });
+
+            Promise.all(promises)
+              .then(events => {
+                let queueSeriesCreation = events.filter(event => !event.ocSeries.length);
+                
+                res.json(
+                  events.filter(event => !event.ocSeries.length)
+                );
+              });
+          }
+          else if (requestError) {
+            res.status(500).send(requestError);
+          }
+      })
+    })
+    .catch(err => res.status(500).send(err));
+});
+
+authRouter.put('/event/series', (req, res) => {
+  getAccessToken()
+    .then(result => {
+      getData(
+        `/v1.0/me/events?$top=50`,
+        result.token,
+        (requestError, endpointData) => {
+          if (endpointData) {
+            res.status(202).send();
+            let filteredFields = ['id','hasAttachments','subject','isAllDay','type','webLink','body','start','end','organizer','attachments'];
+            let formattedData = endpointData.value
+                                  .sort((a, b) => (new Date(a.start.dateTime)).getTime() - (new Date(b.start.dateTime)).getTime())
+                                  .map(event => {
+                                    let returnedEvent = filteredFields.reduce((result, field) => {
+                                      result[field] = event[field] || null;
+                                      return result;
+                                    }, {});
+                                    return returnedEvent;
+                                  });
+
+            const promises = formattedData.map(async (event) => {
+              event.ocSeries = await ocConsumer.getUserSeries(event.organizer.emailAddress.address);
+              return event;
+            });
+
+            Promise.all(promises)
+              .then(events => {
+                //Get all events which are not part of an OC series
+                let seriesCreationQueue = events.filter(event => !event.ocSeries.length);
+
+                if (!seriesCreationQueue.length) {
+                  return res.send();
+                }
+
+                //Get the associated email addresses (uniquely) of those events above...
+                let seriesOwners = seriesCreationQueue.map(event => event.organizer.emailAddress.address);
+                seriesOwners = seriesOwners
+                                 .filter((ownerEmail, index) => index === seriesOwners.indexOf(ownerEmail));
+
+                seriesOwners.forEach(async(email) => {
+                  try {
+                    let vula = new VulaWebService();
+
+                    let userDetails = await vula.getUserByEmail(email);
+                    let ocSetup = {
+                      fullname: userDetails.ldap[0].preferredname + ' ' + userDetails.ldap[0].sn,
+                      username: userDetails.vula.username,
+                        siteId: userDetails.vula.siteId,
+                         email: email
+                    };
+                    ocSetup.ocSeries = await ocConsumer.getUserSeries(email);
+                    console.log(ocSetup);
+                    if (!ocSetup.ocSeries.length) {
+                      let ocSeries = await ocConsumer.createUserSeries(ocSetup);
+                      let obsToolCreation = await vula.addOBSTool(userDetails.vula.username, userDetails.vula.siteId, ocSeries.identifier);
+                      console.log('OBS tool creation for ' + email + ': ', obsToolCreation);
+                    }
+                    await vula.close();
+                    vula = null;
+                  } catch(creationError) {
+                    console.log('creation error', creationError);
+                  }
+                });
+              });
+          }
+          else if (requestError) {
+            res.status(500).send(requestError);
+          }
+          else {
+            res.send('');
+          }
+      })
+    })
+    .catch(err => res.status(500).send(err));
+});
+
+authRouter.get('/event/owner/:email', (req, res) => {
+  let email = req.params.email;
+  (async () => {
+    try {
+      let vula = new VulaWebService();
+      let userDetails = await vula.getUserByEmail(email);
+      let ocSetup = {
+        fullname: userDetails.ldap[0].preferredname + ' ' + userDetails.ldap[0].sn,
+        username: userDetails.vula.username,
+          siteId: userDetails.vula.siteId,
+           email: userDetails.vula.email
+      };
+      ocSetup.ocSeries = await ocConsumer.getUserSeries(email);
+      await vula.close();
+      vula = null;
+      res.json(ocSetup);
+    } catch(e) {
+      console.log('Could not create series for ', email, e);
+      res.status(500).send(e);
+    }
+  })();
+});
+
+authRouter.post('/series/:email', async (req, res) => {
+  let email = req.params.email;
+  try {
+    let ocSeries = await prepareSites({emailAddress: {address: email}});
+    return res.json(ocSeries);
+  } catch(e) {
+    if (e.code && e.code === 409) {
+      return res.json(e.series);
+    }
+
+    console.log('Could not create series for ', email, e);
+    res.status(500).send();
+  }
 });
 
 

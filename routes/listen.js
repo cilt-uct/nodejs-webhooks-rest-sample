@@ -87,7 +87,6 @@ function processNotification(subscriptionId, resource, res, next) {
           subscriptionData.accessToken,
           (requestError, endpointData) => {
             if (endpointData) {
-//            ioServer.to(subscriptionId).emit('notification_received', endpointData);
               prepareSites(endpointData.organizer);
             } else if (requestError) {
               res.status(500);
@@ -103,40 +102,44 @@ function processNotification(subscriptionId, resource, res, next) {
 //    .catch(err => console.log('got error', err));
 }
 
-function prepareSites(info) {
+/******************************************************* *
+ * Create OC series and link it to user's Vula workspace *
+ * ******************************************************/
+
+export function prepareSites(info) {
   let email = info.emailAddress.address;
-  (async () => {
+  return new Promise(async (resolve, reject) => {
     try {
       let ocSeries = await ocConsumer.getUserSeries(email);
 
       if (ocSeries.length) {
-        console.log(`${email} has a ocSeries`);
+        console.log(`${email} has an ocSeries`);
         //User already has a series
-        return;
+        return reject({code: 409, series: ocSeries[0]});
       }
 
       let vula = new VulaWebService();
-      vula.on('ready', () => {
-        (async () => {
-          try {
-            let userDetails = await vula.getUserByEmail(email);
-            let ocSetup = {
-              fullname: userDetails.ldap[0].preferredname + ' ' + userDetails.ldap[0].sn,
-              username: userDetails.vula.username,
-                siteId: userDetails.vula.siteId,
-                 email: email
-            };
-            let ocSeries = await ocConsumer.createUserSeries(ocSetup);
-            console.log(ocSeries);
-            let obsToolCreation = await vula.addOBSTool(userDetails.vula.username, userDetails.vula.siteId, ocSeries.identifier);
-            console.log('OBS tool creation for ' + email + ': ', obsToolCreation);
-          } catch(e) {
-            console.log('Could not create series for ', email, e);
-          }
-        })();
-      });
+      try {
+        let userDetails = await vula.getUserByEmail(email);
+        let ocSetup = {
+          fullname: userDetails.ldap[0].preferredname + ' ' + userDetails.ldap[0].sn,
+          username: userDetails.vula.username,
+            siteId: userDetails.vula.siteId,
+             email: email
+        };
+        let ocSeries = await ocConsumer.createUserSeries(ocSetup);
+        let obsToolCreation = await vula.addOBSTool(userDetails.vula.username, userDetails.vula.siteId, ocSeries.identifier);
+        console.log('OBS tool creation for ' + email + ': ', obsToolCreation);
+        await vula.close();
+        vula = null;
+        resolve(ocSeries);
+      } catch(e) {
+        console.log('Could not create series for ', email, e);
+        reject(e);
+      }
     } catch(asyncErr) {
       console.log('got error from preparing in async', asyncErr);
+      reject(asyncErr);
     }
-  })();
+  });
 }
