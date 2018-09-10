@@ -125,14 +125,15 @@ export function prepareSites(info) {
           fullname: userDetails.ldap[0].preferredname + ' ' + userDetails.ldap[0].sn,
           username: userDetails.vula.username,
             siteId: userDetails.vula.siteId,
-             email: email
+             email: userDetails.vula.email
         };
         let ocSeries = await ocConsumer.createUserSeries(ocSetup);
         let obsToolCreation = await vula.addOBSTool(userDetails.vula.username, userDetails.vula.siteId, ocSeries.identifier);
         console.log('OBS tool creation for ' + email + ': ', obsToolCreation);
         await vula.close();
         vula = null;
-        resolve(ocSeries);
+        let seriesDetails = await ocConsumer.getSeriesById(ocSeries.identifier);
+        resolve(seriesDetails);
       } catch(e) {
         console.log('Could not create series for ', email, e);
         reject(e);

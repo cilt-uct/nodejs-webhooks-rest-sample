@@ -89,6 +89,12 @@ authRouter.patch('/subscription', (req, res, next) => {
     });
 });
 
+authRouter.get('/token', (req, res) => {
+  getAccessToken()
+    .then(token => res.send(token))
+    .catch(err => res.status(404).send("No active tokens available"));
+});
+
 authRouter.get('/subscription', (req, res, next) => {
   getSubscription()
     .then(subscription => {
@@ -144,19 +150,37 @@ authRouter.get('/refresh', (req, res, next) => {
 });
 
 authRouter.get('/event', (req, res) => {
+  let opts = {
+       start: "",
+    startEnd: "",
+         end: ""
+  }
+
+  if (req.query.start || req.query.end) {
+    if (req.query.start) {
+      opts.start = "dateTime%20ge%20'" + convertToUTC(req.query.start)  + "'";
+    }
+    if (req.query.end) {
+      opts.startEnd = "dateTime%20le%20'" + convertToUTC(req.query.end) + "'";
+    }
+  }
+  else {
+    opts.start = "dateTime%20le%20'" + getCurrentTime() + "'";
+    opts.end = "dateTime%20ge%20'" + getCurrentTime() + "'";
+  }
+  let url = `/v1.0/me/events?$filter=start/${opts.start}${opts.end ? `%20and%20end/${opts.end}` : ''}${opts.startEnd ? `%20and%20start/${opts.startEnd}` : ''}&$orderby=start/dateTime%20asc`;
+
   getAccessToken()
     .then(result => {
       getData(
-        `/v1.0/me/events`,
+        url,
         result.token,
         (requestError, endpointData) => {
           if (endpointData) {
             let filteredFields = ['id','hasAttachments','subject','isAllDay','type','webLink','body','start','end','organizer','attachments'];
             let formattedData = endpointData.value
                                   .filter(event => {
-                                    return (((new Date(event.start.dateTime)).getTime() - (new Date()).getTime() > -7200000 ||
-                                            new Date(event.end.dateTime).getTime() > (new Date()).getTime()) && event.organizer.emailAddress.address !== 'One_Button_Studio@uct.ac.za');// &&
-//                                            new Date(event.end.dateTime).getTime() < ((new Date()).getTime() + 24*60*60*1000);
+                                    return event.organizer.emailAddress.address !== 'One_Button_Studio@uct.ac.za';
                                   })
                                   .sort((a, b) => (new Date(a.start.dateTime)).getTime() - (new Date(b.start.dateTime)).getTime())
                                   .map(event => {
@@ -453,4 +477,24 @@ function httpsRequest(url, opts) {
     req.write(data);
     req.end();
   });
+}
+
+function getCurrentDate() {
+  let d = new Date();
+  return `${d.getUTCFullYear()}-${d.getUTCMonth() + 1}-${d.getUTCDate()}T00:00`;
+}
+
+function getCurrentTime() {
+  let d = new Date();
+  return `${d.getUTCFullYear()}-${(d.getUTCMonth() < 9 ? '0' : '') + (d.getUTCMonth() + 1)}-${(d.getUTCDate() < 10 ? '0' : '') + d.getUTCDate()}T${(d.getUTCHours() < 10 ? '0': '') + d.getUTCHours()}:${(d.getUTCMinutes() < 10 ? '0' : '') + d.getUTCMinutes()}`;
+}
+
+function convertToUTC(dateStr) {
+  try {
+    let d = new Date(dateStr);
+    return `${d.getUTCFullYear()}-${(d.getUTCMonth() < 9 ? '0' : '') + (d.getUTCMonth() + 1)}-${(d.getUTCDate() < 10 ? '0' : '') + d.getUTCDate()}T${(d.getUTCHours() < 10 ? '0': '') + d.getUTCHours()}:${(d.getUTCMinutes() < 10 ? '0' : '') + d.getUTCMinutes()}`;
+  } catch(e) {
+    console.log('falling back on date', e);
+    return getCurrentTime();
+  }
 }
