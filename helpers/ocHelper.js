@@ -174,15 +174,11 @@ Sakai site: ${opts.siteId}`
 
 function getACL(opts) {
   let acl = [
-    {action: 'read', allow: true, role: `ROLE_USER_${opts.username}`},
-    {action: 'write', allow: true, role: `ROLE_USER_${opts.username}`},
+    {action: 'read', allow: true, role: `ROLE_USER_${opts.username.toUpperCase()}`},
+    {action: 'write', allow: true, role: `ROLE_USER_${opts.username.toUpperCase()}`},
     {action: 'read', allow: true, role: 'ROLE_CILT_OBS'},
     {action: 'write', allow: true, role: 'ROLE_CILT_OBS'},
     {action: 'read', allow: true, role: 'ROLE_USER_PERSONALSERIESCREATOR'},
   ];
-  if (isNaN(opts.username)) {
-    acl.push({action: 'read', allow: true, role: `ROLE_USER_${opts.username.toUpperCase()}`});
-    acl.push({action: 'write', allow: true, role: `ROLE_USER_${opts.username.toUpperCase()}`});
-  }
   return acl;
 }
