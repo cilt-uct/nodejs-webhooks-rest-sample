@@ -1,0 +1,170 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  min-height: 100%;
+  font-family: Ubuntu, Roboto, 'Segoe UI', 'Helvetica Neue', Helvetica, sans-serif;
+}
+
+header {
+  display: block;
+  width: 100%;
+  line-height: 3rem;
+  background: #222;
+  color: white;
+  box-shadow: 0 2px 2px -2px rgba(0,0,0,0.2);
+}
+
+header h2 {
+  margin: 0;
+  line-height: 3rem;
+  padding: 0 1rem;
+  font-weight: 300;
+}
+
+main {
+  display: flex;
+  padding: 2rem 1rem;
+  justify-content: space-between;
+}
+
+main section {
+  width: calc(100%/3 - 2rem);
+  min-height: 8rem;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  padding: 0.5rem;
+  position: relative;
+}
+
+section h4 {
+  margin: 0;
+  line-height: 3rem;
+  font-weight: 500;
+}
+
+.entityInfo {
+  opacity: 1;
+  position: relative;
+  transition: opacity 0.3s 0.3s;
+  min-height: 6rem;
+}
+
+.loading .entityInfo {
+  opacity: 0;
+}
+
+.entityInfo:empty::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -150%);
+  color: #777;
+  max-width: 80%;
+  font-style: italic;
+  content: attr(data-emptytext);
+}
+
+.entityInfo li {
+  line-height: 2rem;
+}
+
+.entityInfo li span {
+  display: inline-block;
+  vertical-align: top;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 40%;
+}
+
+.entityInfo li span ~ span {
+  width: 60%;
+  text-align: right;
+}
+
+.loader {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 0.75rem;
+  height: 0.75rem;
+  background: #2B8CBE;
+  border-radius: 50%;
+  z-index: 1;
+  transition: opacity 0.3s;
+  opacity: 0;
+}
+
+.loading .loader {
+  opacity: 1;
+}
+
+.loader::before,
+.loader::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  z-index: 0;
+}
+
+.loader::before {
+  transform: translateX(-150%);
+  animation: 1s leftSpin infinite;
+  background: #6D9D5C;
+}
+
+.loader::after {
+  transform: translateX(150%);
+  animation: 1s rightSpin infinite;
+  background: #53599A;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+
+
+@keyframes leftSpin {
+  0% {
+    transform: translateX(-150%);
+    z-index: -1;
+  }
+  50% {
+    z-index: 4;
+    transform: translateX(150%);
+  }
+  75% {
+    z-index: -1;
+  }
+  100% {
+    transform: translateX(-150%);
+  }
+}
+
+@keyframes rightSpin {
+  0% {
+    transform: translateX(150%);
+    z-index: -1;
+  }
+  50% {
+    z-index: -1;
+    transform: translateX(-150%);
+  }
+  75% {
+    z-index: 4;
+  }
+  100% {
+    transform: translateX(150%);
+  }
+}
