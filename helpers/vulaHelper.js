@@ -302,10 +302,11 @@ VulaWebService.prototype = {
              ltilaunchurl: ltiLaunchUrl,
           lticustomparams: `sid=${ocSeries}
 type=personal
-tool=https://${ocConfiguration.hostname}/ltitools/manage/`
+tool=https://${ocConfiguration.hostname}/ltitools/manage/`,
+                   toolid: 'sakai.opencast.personal'
         };
 
-        this.uctClient.addExternalToolToSite(params, (err, result, rawResponse, soapHeader, rawReq) => {
+        this.uctClient.addExternalToolToSiteById(params, (err, result, rawResponse, soapHeader, rawReq) => {
           if (err) {
             console.log('error creating tool', soapHeader, rawResponse);
             return reject({error: err, response: rawResponse, headers: soapHeaders});
