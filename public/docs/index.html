@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>CILT OBS MSGAPI Docs</title>
+        <link rel="stylesheet" href="css/style.css" />
+    </head>
+<body>
+<div class="example-wrapper">
+    <h1>CILT OBS MS Graph API integration</h1>
+    <input type="radio" class="hiddenCheck" name="pageView" autocomplete="off" id="overview" checked>
+    <input type="radio" class="hiddenCheck" name="pageView" autocomplete="off" id="register">
+    <input type="radio" class="hiddenCheck" name="pageView" autocomplete="off" id="accessToken">
+    <input type="radio" class="hiddenCheck" name="pageView" autocomplete="off" id="services">
+    <div class="page">
+      <h4>Overview</h4>
+      <p>Outlook's calendar is the booking management system for OBS scheduling. Users may schedule recordings in the OBS simply by booking the venue via their calendar in Outlook.</p>
+      <p>The system requires integration between Outlook and UCT services such as Vula and Opencast. Microsoft's Graph API has been chosen as the interface between the relevant Microsoft - and UCT - services.</p>
+      <h4>Microsoft Graph API</h4>
+      <p>Given an account, the Microsoft Graph API (hereafter MSGAPI) allows developers to integrate, consume and interface with a number of Microsoft services <em>for that account</em> within third-party applications.</p>
+      <p>Trust is required prior to accessing (potentially sensitive) account information. An application acquires trust as follows:</p>
+      <div class="flow">
+        <div>
+          <span>Register application</span>
+        </div>
+        <div>
+          <span>Gain access token</span>
+        </div>
+        <div>
+          <span>Subscribe to services<br>Consume services</span>
+        </div>
+      </div>
+      <div class="controls">
+        <span></span>
+        <label for="register" data-title="next"></label>
+      </div>
+    </div>
+    <div class="page">
+      <h4>Registration</h4>
+      <p>Third-party applications need to be registered at Microsoft's <a href="https://apps.dev.microsoft.com" target="_blank">Application Registration Portal</a> for access to  MSGAPI. After registration, the application is given an <b>application id</b> and a <b>password/public key</b>; these are used to initiate requests to MSGAPI.<p>
+      <p>The following steps outlines the registration process:</p>
+      <ul>
+        <li>login using the account which will provide the information,</li>
+        <li>click the "Add an app" button,</li>
+        <li>provide a name for the application of your choosing,</li>
+        <li>generate a new password (NB: the password will display a single time only, <b>keep it in a safe place</b>),</li>
+        <li>add a web platform,</li>
+        <li>set redirect URLs to your application's domain.</li>
+      </ul>
+      <p>Most notable of the steps listed above is the application's redirect URLs. These URLs are used, among others, to vet the application's domain and to handle incoming requests such as push notifications from Microsoft services.</p>
+      <p>For the OBS application, the redirect URLs used are</p>
+      <ul>
+        <li><b>https://camonitor.uct.ac.za/obs-api/authorise</b><br> used for domain vetting purposes<p></p></li>
+        <li><b>https://camonitor.uct.ac.za/obs-api/notify</b><br> captures push notification events from the MSGAPI calendar service whenever a user schedules an event in the OBS</li>
+      </ul>
+      <div class="controls">
+        <label for="overview" data-title="previous"></label>
+        <label for="accessToken" data-title="next"></label>
+      </div>
+    </div>
+    <div class="page">
+      <h4>Access Token</h4>
+      <p>An application gains access tokens by using their application id and password provided during registration. The access token allows the application to query MSGAPI for a set of requested resources. Access tokens for OBS are generated <a href="/obs-api/renew" target="_blank">here</a>.</p>
+      <div class="flow" style="margin: 2rem 0;">
+        <div>
+          <span>Use application id<br>Use application password</span>
+        </div>
+        <div>
+          <span>Await domain authorisation<br>(One of the redirect URLs)</span>
+        </div>
+        <div>
+          <span>Gain access token</span>
+        </div>
+      </div>
+      <code data-title="Generate an access token (interactive process)">
+GET https://login.microsoft.com/...
+      </code>
+      <p>The response to the above request includes the actual access token, its lifetime and a refresh token. By default, access tokens have a lifetime of one hour. This short lifetime can be countered by using the refresh token to programmatically regenerate the access token. Refresh tokens have a lifetime of one year when not using implicit flow.</p>
+      <code data-title="Regenerate access token">
+Header
+Content-Type: application/x-www-form-urlencoded
+
+POST https://login.microsoft.com/common/oauth2/v2.0/token
+client_id=[application_id]&client_secret=[app password]
+&grant_type=refresh_token&refresh_token=[refresh_token]
+&redirect_uri=[redirect url used for authorisation]
+&scope=[set of requested resources]</code>
+      <p>The OBS application regenerates its access token every half hour.</p>
+      <div class="controls">
+        <label for="register" data-title="previous"></label>
+        <label for="services" data-title="next"></label>
+      </div>
+    </div>
+    <div class="page">
+      <h4>Consume services</h4>
+      <p>Services can now be consumed. The account's calendar can be queried with:</p>
+      <code data-title="Get calendar">
+Header
+Authorization: Bearer [access_token]
+Content-Type: application/json
+
+GET https://graph.microsoft.com/v1.0/me/events/
+</code>
+<div class="bigCode">
+<input type="checkbox" class="hiddenCheck" id="bc1" />
+<label for="bc1"></label>
+<code data-title="Sample response">
+{
+  "@odata.context": "https://graph.microsoft.com/v1.0/$metadata#users('7b9e3077-4d4c-4f7e-a292-82b972745d20')/events",
+  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/events/?$skip=10",
+  "value": [
+    {
+      "@odata.etag": "W/\"uEWSlnpTdEC5QngbMoY3fAAANqrltQ==\"",
+      "id": "AAMkADQ1MThmMjI0LTllYzQtNDE5Yy05OTgzLTQwZGZjMzVhMWNmNgBGAAAAAADe08byCCBIRoB4EgSZvOSYBwC4RZKWelN0QLlCeBsyhjd8AAAAAAENAAC4RZKWelN0QLlCeBsyhjd8AAA2q9ZfAAA=",
+      "createdDateTime": "2018-05-17T07:17:43.1333588Z",
+      "lastModifiedDateTime": "2018-05-17T07:17:45.4927718Z",
+      "changeKey": "uEWSlnpTdEC5QngbMoY3fAAANqrltQ==",
+      "categories": [],
+      "originalStartTimeZone": "Kaliningrad Standard Time",
+      "originalEndTimeZone": "Kaliningrad Standard Time",
+      "iCalUId": "040000008200E00074C5B7101A82E0080000000000000000000000000000000000000000310000007643616C2D5569640100000031394144363945462D323542312D343544432D423346312D32303841463535334137453800",
+      "reminderMinutesBeforeStart": 15,
+      "isReminderOn": false,
+      "hasAttachments": false,
+      "subject": "Duncan Smith ",
+      "bodyPreview": "",
+      "importance": "normal",
+      "sensitivity": "normal",
+      "isAllDay": false,
+      "isCancelled": false,
+      "isOrganizer": false,
+      "responseRequested": true,
+      "seriesMasterId": null,
+      "showAs": "busy",
+      "type": "singleInstance",
+      "webLink": "https://outlook.office365.com/owa/?itemid=AAMkADQ1MThmMjI0LTllYzQtNDE5Yy05OTgzLTQwZGZjMzVhMWNmNgBGAAAAAADe08byCCBIRoB4EgSZvOSYBwC4RZKWelN0QLlCeBsyhjd8AAAAAAENAAC4RZKWelN0QLlCeBsyhjd8AAA2q9ZfAAA%3D&exvsurl=1&path=/calendar/item",
+      "onlineMeetingUrl": null,
+      "recurrence": null,
+      "responseStatus": {
+      "response": "accepted",
+      "time": "2018-05-17T07:17:44.7271351Z"
+      },
+      "body": {
+        "contentType": "html",
+        "content": "<html><head><meta name=\"Generator\" content=\"Microsoft Exchange Server\">\r\n<!-- converted from text -->\r\n<style><!-- .EmailQuote { margin-left: 1pt; padding-left: 4pt; border-left: #800000 2px solid; } --></style></head>\r\n<body>\r\n<font size=\"2\"><span style=\"font-size:11pt;\"><div class=\"PlainText\">&nbsp;</div></span></font>\r\n</body>\r\n</html>\r\n"
+      },
+      "start": {
+        "dateTime": "2018-05-24T09:30:00.0000000",
+        "timeZone": "UTC"
+      },
+      "end": {
+        "dateTime": "2018-05-24T10:00:00.0000000",
+        "timeZone": "UTC"
+      },
+      "location": {
+        "displayName": "One Button Studio",
+        "locationType": "default",
+        "uniqueId": "One Button Studio",
+        "uniqueIdType": "private"
+      },
+      "locations": [
+        {
+          "displayName": "One Button Studio",
+          "locationType": "default",
+          "uniqueId": "One Button Studio",
+          "uniqueIdType": "private"
+        }
+      ],
+      "attendees": [
+        {
+          "type": "required",
+          "status": {
+            "response": "none",
+            "time": "0001-01-01T00:00:00Z"
+          },
+          "emailAddress": {
+            "name": "Duncan Smith",
+            "address": "duncan.smith@uct.ac.za"
+          }
+        }
+      ],
+      "organizer": {
+        "emailAddress": {
+          "name": "Duncan Smith",
+          "address": "duncan.smith@uct.ac.za"
+        }
+      }
+    }
+  ]
+}</code>
+</div>
+  <h4>Subscriptions</h4>
+  <p>The OBS application is subscribed to calendar push notifications. Whenever a user schedules an event in the OBS, the OBS application receives notification thereof. The benefit of this approach is that Vula home sites adapted and Opencast personal series are created only when necessary.</p>
+  <p>First and foremost, a redirect URL for notifications should be registered. In the case of the OBS application, the redirect URL is https://camonitor.uct.ac.za/obs-api/notify. A subscription can be registered with:</p>
+     <div class="bigCode noHide"> <code data-title="Subscribe to a service">
+Header
+Authorization: Bearer [access_token]
+Content-Type: application/json
+
+POST https://graph.microsoft.com/v1.0/me/subscriptions
+
+{
+  "changeType": "created,updated",
+  "notificationUrl": [notification redirect URL],
+  "resource": "me/events",
+  "expirationDateTime":[requested expiration date <= 3 days],
+  "clientState": [optional token usable for vetting by third-party application]
+}
+
+</code>
+</div>
+<p>MSGAPI validates the notification redirect URL on registration with a request of its own:</p>
+     <div class="bigCode noHide"> <code data-title="MSGAPI validates in return..." style="padding-bottom: 1.5rem">
+POST [notification redirect URL]?validationToken=[some token]
+</code>
+  <p>The notification redirect URL should respond with the supplied validationToken parameter as the body, with content type 'text/plain'. Validation fails if the server to be subscibed does not respond as such.</p>
+</div> 
+     <div class="controls">
+        <label for="accessToken" data-title="previous"></label>
+      </div>
+    </div>
+</div>
+</body>
+</html>

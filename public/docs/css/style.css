@@ -1,0 +1,122 @@
+    .example-wrapper { margin: 1em auto; max-width: 810px; width: 95%; font: 18px/1.5 sans-serif; padding: 0 5px; }
+    .example-wrapper code { background: #F5F5F5; padding: 2px 6px; }
+    .flow { display: flex; justify-content: space-between; }
+    .flow div { display: flex; flex-direction: column; justify-content: center; width: 12rem; height: 12rem; box-shadow: 0 0 1px black; position: relative; }
+    .flow div span { text-align: center; }
+    .flow div:not(:last-child)::before {
+      position: absolute; top: 50%; right: -5.5rem; background: #ccc; width: 4rem; height: 2rem; content: ''; transform: translate(0, -50%);
+    }
+    .flow div:not(:last-child)::after {
+      position: absolute; top: 50%; right: -5.5rem; width: 0; height: 0; content: ''; transform: translate(0, -50%);
+      border-left: 2rem solid #ccc; border-top: 2rem solid white; border-bottom: 2rem solid white; 
+    }
+
+    .hiddenCheck {
+      display: none;
+    }
+
+    .controls {
+      margin-top: 1rem;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    label {
+      background: #ccc;
+      padding: 0.25rem 1rem;
+      cursor: pointer;
+    }
+
+    label::before {
+      content: attr(data-title);
+      text-transform: capitalize;
+      color: #222;
+    }
+
+    .page {
+      opacity: 0;
+      visibility: hidden;
+      overflow-y: hidden;
+      overflow-x: display;
+      padding: 0 2px;
+      max-height: 0;
+      transition: max-height 0s 0.5s, visibility 0s 0.55s, opacity 0.5s;
+    }
+
+    input:nth-of-type(1):checked ~ .page:nth-of-type(1),
+    input:nth-of-type(2):checked ~ .page:nth-of-type(2),
+    input:nth-of-type(3):checked ~ .page:nth-of-type(3),
+    input:nth-of-type(4):checked ~ .page:nth-of-type(4) {
+      max-height: 1000rem;
+      opacity: 1;
+      visibility: visible;
+      transition: max-height 0s 0.55s, visibility 0s 0.56s, opacity 0.5s 0.56s;
+    }
+    code { display: block; border: 1px solid #ccc; background: #f4f4f4; white-space: pre-wrap; overflow-wrap: break-word; font-size: 0.8rem; }
+      
+    code[data-title]::before {
+      display: block;
+      content: attr(data-title)':';
+      font-size: 1.25rem;
+      line-height: 2.5rem;
+      color: firebrick;
+    }
+
+    .bigCode {
+      margin: 1rem 0;
+      position: relative;
+    }
+
+    .bigCode code {
+      max-height: 24rem;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .bigCode:not(.noHide) code::after {
+      width: 100%;
+      height: 3rem;
+      line-height: 4rem;
+      background: linear-gradient(180deg,
+                    transparent 0%,
+                    #f5f5f5 50%,
+                    #f5f5f5 100%
+                  );
+      content: ' . . .';
+      color: firebrick;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+    }
+
+    .bigCode input:checked ~ code {
+      max-height: 1000rem;
+    }
+
+    .bigCode input:checked ~ code::after {
+      display: none;
+    }
+
+    .bigCode label {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      box-shadow: 0 0 1px black;
+      z-index: 2;
+      font-size: 0.8rem;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .bigCode:hover label {
+      opacity: 1;
+    }
+
+    .bigCode label::before {
+      content: 'More';
+    }
+
+    .bigCode input:checked ~ label::before {
+      content: 'Less';
+    }
+
