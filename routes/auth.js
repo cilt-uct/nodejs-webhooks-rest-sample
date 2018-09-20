@@ -161,12 +161,12 @@ authRouter.get('/event', (req, res) => {
       opts.start = "dateTime%20ge%20'" + convertToUTC(req.query.start)  + "'";
     }
     if (req.query.end) {
-      opts.startEnd = "dateTime%20le%20'" + convertToUTC(req.query.end) + "'";
+      opts.startEnd = "dateTime%20lt%20'" + convertToUTC(req.query.end) + "'";
     }
   }
   else {
     opts.start = "dateTime%20le%20'" + getCurrentTime() + "'";
-    opts.end = "dateTime%20ge%20'" + getCurrentTime() + "'";
+    opts.end = "dateTime%20gt%20'" + getCurrentTime() + "'";
   }
   let url = `/v1.0/me/events?$filter=start/${opts.start}${opts.end ? `%20and%20end/${opts.end}` : ''}${opts.startEnd ? `%20and%20start/${opts.startEnd}` : ''}&$orderby=start/dateTime%20asc`;
 
