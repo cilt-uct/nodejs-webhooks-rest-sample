@@ -6,21 +6,26 @@ import { parseString } from 'xml2js';
 
 function VulaWebService() {
 
-  this.hostname = vulaConfiguration.hostname;
+  //These two variables are needed to make SOAP requests.
+  //They are set during this.login()
+  this.hostname = '';
+  this.token = '';
+
+  //Credentials
+  this.hostRegistration = vulaConfiguration.hostname;
   this.credentials = {
     id: vulaConfiguration.username,
     pw: vulaConfiguration.password
   };
+  this.loginUrl = `https://${this.hostRegistration}/sakai-ws/soap/login?wsdl`;
 
-  this.loginUrl = `https://${this.hostname}/sakai-ws/soap/login?wsdl`;
-  this.sakaiSoapEndpoint = `https://${this.hostname}/sakai-ws/soap/sakai?wsdl`;
-  this.uctSoapEndpoint = `https://${this.hostname}/sakai-ws/soap/uct?wsdl`;
+  //These two enpoints are overwritten later on during login...
+  this.sakaiSoapEndpoint = `${this.hostname}/sakai-ws/soap/sakai?wsdl`;
+  this.uctSoapEndpoint = `${this.hostname}/sakai-ws/soap/uct?wsdl`;
 
   this.authClient = null;
   this.sakaiClient = null;
   this.uctClient = null;
-
-  this.token = '';
 
   let _listeners = {};
   Object.defineProperty(this, 'listeners', {
@@ -55,12 +60,17 @@ VulaWebService.prototype = {
         }
 
         this.authClient = client;
-        this.authClient.login(this.credentials, (e, res) => {
+        this.authClient.loginToServer(this.credentials, (e, res) => {
           if (e) {
             return reject({error: e});
           }
 
-          this.token = res.return;
+          let details = res.return.split(',');
+          //Response to loginToServer is `[session_id],[app server]`
+          this.token = details[0];
+          this.hostname = details[1];
+          this.sakaiSoapEndpoint = `${this.hostname}/sakai-ws/soap/sakai?wsdl`;
+          this.uctSoapEndpoint = `${this.hostname}/sakai-ws/soap/uct?wsdl`;
           resolve(this.token);
         });
       });

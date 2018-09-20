@@ -89,6 +89,13 @@ function processNotification(subscriptionId, resource, res, next) {
             if (endpointData) {
               prepareSites(endpointData.organizer);
             } else if (requestError) {
+              //Some errors here are for declined events.
+              //Example: { error: 
+              //   { code: 'ErrorItemNotFound',
+              //     message: 'The specified object was not found in the store.',
+              //     innerError: 
+              //      { 'request-id': 'f0f8033a-7814-4233-b249-b8073f56babc',
+              //        date: '2018-09-20T13:29:42' } } }
               res.status(500);
               next(requestError);
             }
