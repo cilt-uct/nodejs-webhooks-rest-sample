@@ -91,7 +91,7 @@ function sendMail(toArr, subject, body, opts) {
                         content: typeof body == 'string' ? body : 'A body'
                },
         },
-        saveToSentItems: "false"
+        saveToSentItems: "true"
   };
 
   toArr = toArr ? (Array.isArray(toArr) ? toArr : [toArr]) : [];
