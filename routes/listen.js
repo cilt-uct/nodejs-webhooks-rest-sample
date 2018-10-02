@@ -7,6 +7,7 @@ import { getSubscription } from '../helpers/dbHelper';
 import { subscriptionConfiguration } from '../constants';
 import VulaWebService from '../helpers/vulaHelper';
 import { ocConsumer } from '../helpers/ocHelper';
+import { mailTemplate, sendMail } from '../helpers/utilities';
 
 export const listenRouter = express.Router();
 
@@ -139,6 +140,8 @@ export function prepareSites(info) {
         console.log('OBS tool creation for ' + email + ': ', obsToolCreation);
         await vula.close();
         vula = null;
+        let formattedEmail = await mailTemplate('obs', {fullname: ocSetup.fullname, UCTAccount: ocSetup.username});
+        sendMail(ocSetup.email, 'Welcome to the One Button Studio', formattedEmail, {contentType: 'HTML'});
         let seriesDetails = await ocConsumer.getSeriesById(ocSeries.identifier);
         resolve(seriesDetails);
       } catch(e) {

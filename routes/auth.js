@@ -234,11 +234,6 @@ authRouter.get('/event/series', (req, res) => {
           if (endpointData) {
             let filteredFields = ['id','hasAttachments','subject','isAllDay','type','webLink','body','start','end','organizer','attachments'];
             let formattedData = endpointData.value
-//                                  .filter(event => {
-//                                    return ((new Date(event.start.dateTime)).getTime() - (new Date()).getTime() > -7200000 ||
-//                                            new Date(event.end.dateTime).getTime() > (new Date()).getTime()) &&
-//                                            new Date(event.end.dateTime).getTime() < ((new Date()).getTime() + 24*60*60*1000);
-//                                  })
                                   .sort((a, b) => (new Date(a.start.dateTime)).getTime() - (new Date(b.start.dateTime)).getTime())
                                   .map(event => {
                                     let returnedEvent = filteredFields.reduce((result, field) => {

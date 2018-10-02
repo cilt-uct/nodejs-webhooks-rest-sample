@@ -17,17 +17,26 @@ export function postData(path, token, data, callback) {
     headers: {
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + token,
-      'Content-Length': data.length
+      'Content-Length': Buffer.byteLength(data, 'utf8')
     }
   };
 
   const req = https.request(options, res => {
-    let subscriptionData = '';
+    let responseData = '';
 
-    res.on('data', chunk => (subscriptionData += chunk));
+    res.on('data', chunk => (responseData += chunk));
     res.on('end', () => {
-      if (res.statusCode === 201) callback(null, JSON.parse(subscriptionData));
-      else callback(JSON.parse(subscriptionData), null);
+      if (res.statusCode === 201) callback(null, JSON.parse(responseData));
+      else if (res.statusCode === 202) {
+        callback(null, true);
+      }
+      else {
+        try {
+          callback(JSON.parse(responseData), null);
+        } catch(e) {
+          callback(responseData, null);
+        }
+      }
     });
   });
 
