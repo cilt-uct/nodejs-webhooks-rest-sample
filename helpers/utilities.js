@@ -1,6 +1,7 @@
 let fs = require('fs');
 import https from 'https';
 import { getAccessToken } from './dbHelper';
+import { postData } from './requestHelper';
 
 export function httpsRequest(url, opts) {
   return new Promise((resolve, reject) => {
@@ -69,17 +70,17 @@ function initEmail(opts) {
       }
 
       if (opts.fullname) {
-        template.replace('UCT Colleague', opts.fullname);
+        template = template.replace(/UCT Colleague/g, opts.fullname);
       }
       if (opts.UCTAccount) {
-        template.replace('vula_account', `~${opts.UCTAccount}`);
+        template = template.replace(/vula_account/g, `~${opts.UCTAccount}`);
       }
       resolve(template);
     });
   });
 }
 
-function sendMail(toArr, subject, body, opts) {
+export function sendMail(toArr, subject, body, opts) {
   opts = opts || {};
   let reqBody = {
         message: {
