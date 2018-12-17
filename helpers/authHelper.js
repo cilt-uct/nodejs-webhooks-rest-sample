@@ -1,6 +1,6 @@
 import { AuthenticationContext } from 'adal-node';
 
-import { adalConfiguration } from '../constants';
+import { adalConfiguration, tokenConfiguration } from '../constants';
 
 const resource = 'https://graph.microsoft.com/';
 
@@ -9,10 +9,12 @@ const resource = 'https://graph.microsoft.com/';
  * @return {string} a fully formed uri with which authentication can be completed.
  */
 export function getAuthUrl() {
-  return adalConfiguration.authority + '/oauth2/authorize' +
+  return adalConfiguration.authority + '/oauth2/v2.0/authorize' +
     '?client_id=' + adalConfiguration.clientID +
     '&response_type=code' +
-    '&redirect_uri=' + adalConfiguration.redirectUri;
+    '&redirect_uri=' + encodeURIComponent(adalConfiguration.redirectUri) +
+    '&scope=' + encodeURIComponent(tokenConfiguration.scope) +
+    '&response_mode=query'
 }
 
 /**
