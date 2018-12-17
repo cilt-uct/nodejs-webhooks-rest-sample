@@ -43,8 +43,25 @@ exports.ocConsumer = {
       });
     });
   },
+  getPersonalSeries: function(search) {
+    return new Promise(async(resolve, reject) => {
+      try {
+        let userSeries = await this.getUserSeries(search);
+        resolve(
+          userSeries
+            .filter(series => series.description.indexOf('Personal') === 0 &&
+                              series.description.indexOf(search) > -1)
+            .sort((a, b) => a.organizers[0] < b.organizers[0] ? 1 : -1)
+            .reduce((series, cur) => series = series || cur, null)
+        );
+      } catch(e) {
+        reject(e);
+      }
+    });
+  },
   createUserSeries: function(opts) {
     opts = opts || {};
+    console.log('i am going to make this thing');
     return new Promise((resolve, reject) => {
       let valid = true;
       ['fullname', 'username', 'email', 'siteId'].some(field => {
@@ -55,7 +72,8 @@ exports.ocConsumer = {
       });
 
       if (!valid) {
-        return;
+        console.log('invalid here');
+        return reject('not a valid thing');
       }
 
       let payload = getPayload(opts);
@@ -84,6 +102,72 @@ exports.ocConsumer = {
       });
     });
   },
+  replaceUserInSeriesACL: function(seriesId, oldUser, newUser) {
+    //WARNING: this replaces ACL totally. Check the edge case where the event was shared with another person not related to the series
+    return new Promise(async(resolve, reject)=> {
+      try {
+        let currentAcl = await this.getSeriesAcl(seriesId);
+        let newAcl = currentAcl
+                       .map(acl => {
+                         acl.role = acl.role.replace(oldUser.toUpperCase(), newUser.toUpperCase()); //replace user..
+                         return JSON.stringify(acl);                    //...and stringify so that we can make entries unique (MH-13075)
+                       })
+                       .filter((aclString, index, origArray) => origArray.indexOf(aclString) === index)  //now they are unique...
+                       .map(aclString => JSON.parse(aclString))                                          //...and make the entries objects again
+
+        let requestHeaders = {headers: Object.assign({'Content-Type': 'application/x-www-form-urlencoded'}, ocDigestHeader.headers)};
+        let options = Object.assign({
+             uri: `https://${hostname}/api/series/${seriesId}/acl`,
+          method: 'POST',
+            form: {
+                    acl: JSON.stringify(newAcl)
+                  }
+        }, requestHeaders, credentials);
+
+        request(options, (err, req, body) => {
+          if (err) {
+            return reject('got some error', err);
+          }
+
+          try {
+            resolve(JSON.parse(body));
+          } catch(e) {
+            resolve(body);
+          }
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  },
+  updateUserDetailsForSeries: function(seriesId, user) {
+    return new Promise((resolve, reject) => {
+      let payload = getPayload(user);
+      let requestHeaders = {headers: Object.assign({'Content-Type': 'application/x-www-form-urlencoded'}, ocDigestHeader.headers)};
+      let options = Object.assign({
+           uri: `https://${hostname}/admin-ng/series/${seriesId}/metadata`,
+        method: 'PUT',
+          form: {
+                  metadata: JSON.stringify(payload),
+                }
+      }, requestHeaders, credentials);
+
+      request(options, (err, req, body) => {
+        if (err) {
+          return reject(err);
+        }
+
+        console.log('Completed series update:', user.username, seriesId);
+        try {
+          let result = JSON.parse(body);
+          resolve(true);
+        } catch(e) {
+          console.log(e, body);
+          reject('server returned with unexpected content type');
+        }
+      });
+    });
+  },
   getSeriesById: function(id) {
     return new Promise((resolve, reject) => {
       let uri = `https://${hostname}/api/series/${id}`;
@@ -99,6 +183,45 @@ exports.ocConsumer = {
         } catch(e) {
           console.log(e, body);
           reject('server returned with unexpected content type');
+        }
+      });
+    });
+  },
+  getTAccountSeries: function() {
+    return new Promise(async(resolve) => {
+      try {
+        let tRegex = /^t\d+$/gi;
+        let series = await this.getUserSeries('personal');
+        let tAccountSeries = series
+                               .filter(serie => serie.description && serie.description.indexOf('Personal series') === 0)
+                               .filter(serie => {
+                                 return serie.creator.charAt(0).toLowerCase() === 't' ||
+                                        (serie.organizers[0] && tRegex.test(serie.organizers[0])); //TODO: use regex here, otherwise people with names starting with T will be listed as T account
+                               });
+        resolve(tAccountSeries);
+      } catch(e) {
+        console.log('could not get personal series', e);
+        resolve([]);
+      }
+    });
+  },
+  getSeriesAcl: function(seriesId) {
+    return new Promise((resolve, reject) => {
+      let requestHeaders = {headers: Object.assign({'Content-Type': 'application/x-www-form-urlencoded'}, ocDigestHeader.headers)};
+      let options = Object.assign({
+           uri: `https://${hostname}/api/series/${seriesId}/acl`,
+        method: 'GET'
+      }, requestHeaders, credentials);
+
+      request(options, (err, req, body) => {
+        if (err) {
+          return reject('got some error', err);
+        }
+
+        try {
+          resolve(JSON.parse(body));
+        } catch(e) {
+          resolve(body);
         }
       });
     });
@@ -141,7 +264,7 @@ Sakai site: ${opts.siteId}`
           },
           {
                id: 'contributor',
-            value: [opts.fullname]
+            value: [opts.username, opts.fullname]
           },
           {
                id: 'publisher',
@@ -178,7 +301,6 @@ function getACL(opts) {
     {action: 'write', allow: true, role: `ROLE_USER_${opts.username.toUpperCase()}`},
     {action: 'read', allow: true, role: 'ROLE_CILT_OBS'},
     {action: 'write', allow: true, role: 'ROLE_CILT_OBS'},
-    {action: 'read', allow: true, role: 'ROLE_USER_PERSONALSERIESCREATOR'},
   ];
   return acl;
 }

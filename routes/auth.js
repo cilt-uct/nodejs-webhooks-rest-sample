@@ -3,16 +3,22 @@ import https from 'https';
 import querystring from 'querystring';
 
 import { getSubscription, saveSubscription, deleteSubscription,
-         getAccessToken, saveAccessToken, saveFromRefreshToken } from '../helpers/dbHelper';
+         getAccessToken, saveAccessToken, saveFromRefreshToken,
+         getNotifiedTAccounts, saveTAccountPortValidationString,
+         checkValidation, logAccountTransfer, logTAccountNotification } from '../helpers/dbHelper';
 import { getAuthUrl, getTokenFromCode } from '../helpers/authHelper';
 import { getData, postData, deleteData, patchData } from '../helpers/requestHelper';
 import VulaWebService from '../helpers/vulaHelper';
 import { ocConsumer } from '../helpers/ocHelper';
+import { mailTemplate, sendMail } from '../helpers/utilities';
 import { subscriptionConfiguration, adalConfiguration,
          tokenConfiguration } from '../constants';
 import { prepareSites } from '../routes/listen.js';
 
 export const authRouter = express.Router();
+
+let isTokenExpired = false;
+let lastTokenCheck = 0;
 
 // Redirect to start page
 authRouter.get('/', (req, res) => {
@@ -35,21 +41,19 @@ authRouter.get('/authorise', (req, res, next) => {
       saveAccessToken(token)
         .then(() => {
           makeWebhookSubscription(token)
-            .then(() => {
+            .then(subscriptionData => {
               res.redirect(
                 '/obs-api/home.html?subscriptionId=' + subscriptionData.id +
                 '&userId=' + subscriptionData.userId
               );
             })
             .catch(err => {
-              reject(error);
               res.status(500);
               next(err);
             });
         })
         .catch(err => {
            console.log('saving token error', err);
-           reject(error);
            res.status(500);
            next(err);
         });
@@ -116,6 +120,14 @@ authRouter.post('/subscription', (req, res, next) => {
 authRouter.get('/refresh', (req, res, next) => {
   getAccessToken()
     .then(token => {
+      let data = {
+                client_id: adalConfiguration.clientID,
+                    scope: tokenConfiguration.scope,
+            refresh_token: token.refresh_token,
+             redirect_uri: adalConfiguration.redirectUri,
+               grant_type: 'refresh_token',
+            client_secret: adalConfiguration.clientSecret
+          };
       httpsRequest(
         `${adalConfiguration.authority}/${tokenConfiguration.tokenUri}`,
         {
@@ -123,14 +135,7 @@ authRouter.get('/refresh', (req, res, next) => {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded'
           },
-          data: {
-                client_id: adalConfiguration.clientID,
-                    scope: tokenConfiguration.scope,
-            refresh_token: token.refresh_token,
-             redirect_uri: adalConfiguration.redirectUri,
-               grant_Type: 'refresh_token',
-            client_secret: adalConfiguration.clientSecret
-          },
+          data: data,
           returnResponse: true
         }
       )
@@ -144,12 +149,16 @@ authRouter.get('/refresh', (req, res, next) => {
         }
         res.send();
       })
-      .catch(err => {console.log(err);throw new Error(JSON.stringify(err))});
+      .catch(err => {throw new Error(JSON.stringify(err))});
     })
     .catch(err => res.status(500).send(err));
 });
 
 authRouter.get('/event', (req, res) => {
+  if (isTokenExpired && lastTokenCheck + 300000 > (new Date()).getTime()) {
+    return res.json([]);
+  }
+
   let opts = {
        start: "",
     startEnd: "",
@@ -215,7 +224,17 @@ authRouter.get('/event', (req, res) => {
               })
               .catch(() => res.send([]));
 
+            if (isTokenExpired) {
+              isTokenExpired = false;
+            }
+
           } else if (requestError) {
+            if (requestError.error.code === 'InvalidAuthenticationToken') {
+              //Token has expired. notify LT team
+              isTokenExpired = true;
+              lastTokenCheck = (new Date()).getTime();
+            }
+
             res.status(500).send(requestError);
           }
         }
@@ -316,7 +335,6 @@ authRouter.put('/event/series', (req, res) => {
                          email: email
                     };
                     ocSetup.ocSeries = await ocConsumer.getUserSeries(email);
-                    console.log(ocSetup);
                     if (!ocSetup.ocSeries.length) {
                       let ocSeries = await ocConsumer.createUserSeries(ocSetup);
                       let obsToolCreation = await vula.addOBSTool(userDetails.vula.username, userDetails.vula.siteId, ocSeries.identifier);
@@ -364,10 +382,20 @@ authRouter.get('/event/owner/:email', (req, res) => {
   })();
 });
 
+authRouter.get('/series/taccs', async (req, res) => {
+  try {
+    let tAccountSeries = await ocConsumer.getTAccountSeries();
+    res.json(tAccountSeries);
+  } catch(e) {
+    res.status(500).send('server error in getting t account series');
+  }
+});
+
 authRouter.post('/series/:email', async (req, res) => {
   let email = req.params.email;
+  let caName = req.body.hostname;
   try {
-    let ocSeries = await prepareSites({emailAddress: {address: email}});
+    let ocSeries = await prepareSites({emailAddress: {address: email}, host: caName});
     return res.json(ocSeries);
   } catch(e) {
     if (e.code && e.code === 409) {
@@ -379,6 +407,81 @@ authRouter.post('/series/:email', async (req, res) => {
   }
 });
 
+authRouter.post('/mail', async (req, res) => {
+  let formattedEmail = await mailTemplate('obs', {fullname: 'Duncan Smith', UCTAccount: '01457245'});
+  sendMail('duncan.smith@uct.ac.za', 'Welcome to the One Button Studio', formattedEmail, {contentType: 'HTML'});
+  res.send();
+});
+
+authRouter.get('/mail/taccounts', async (req, res) => {
+  res.status(202).send();
+  try {
+    let tAccountSeries = await ocConsumer.getTAccountSeries();
+    let notifiedAccounts = (await getNotifiedTAccounts()).map(account => account.user_id);
+    let notificationList = tAccountSeries
+                             .filter(series => notifiedAccounts.indexOf(series.organizers[0]) === -1 &&
+                                               (!series.organizers[1] || notifiedAccounts.indexOf(series.organizers[1]) === -1))
+                             .map(series => appendAdditionalUserDetails(series));
+
+    let sendPortAccountOption = async (index) => {
+      //Port as in porting cell number between ISPs
+      index = index || 0;
+      if (notificationList.length <= index) {
+        return;
+      }
+
+      try {
+        let series = notificationList[index];
+        let validationString = (Math.random() + 1).toString(36).substring(2, 12) + (Math.random() + 1).toString(36).substring(2, 12); //TODO: this generates a new validation string... set this to use the current one if it exists
+        let saveValidationString = await saveTAccountPortValidationString(series.account, validationString);
+        let formattedEmail = await mailTemplate('taccount', {fullname: series.contributors[0], validationString: validationString, account: series.account, email: series.email});
+        await sendMail(series.email, formattedEmail.subject, formattedEmail.body, {contentType: 'HTML'});
+        await logTAccountNotification(series.account, series.contributors[0], series.email);
+      } catch(e) {
+        switch (e.code) {
+          case 'ER_DUP_ENTRY':
+            //Validation string already saved
+            break;
+
+          default:
+            console.log(e);
+        }
+      }
+      sendPortAccountOption(++index);
+    };
+    sendPortAccountOption();
+  } catch(e) {
+    res.status(500).send(e);
+  }
+});
+
+authRouter.get('/series/transfer', async (req, res) => {
+  let account = req.query.account;
+  let validationString = req.query.validation;
+  let email = req.query.email;
+  let ipAddress = req.headers['x-real-ip'] || req.connection.remoteAddress;
+  let isTransfer = req.query.transfer === 'true';
+  try {
+    if (isTransfer) {
+      let transferComplete = await transferAccount(validationString, account, email, ipAddress);
+      res.send(transferComplete ? "done" : "failed");
+    }
+    else {
+      res.send("skipping");
+      let skipTransferComplete = await skipTransfer(validationString, account, email, ipAddress);
+    }
+  } catch (e) {
+    res.status(500).send(e.message);
+  }
+});
+
+authRouter.get('/series/duncan', async (req, res) => {
+  try {
+    let userDetails = await vula.getUserByEmail('01457245');             //get LDAP user details
+  } catch(e) {
+    res.status(500).send(e.message || e);
+  }
+});
 
 // This route signs out the users by performing these tasks
 // Delete the subscription data from the database
@@ -405,10 +508,66 @@ authRouter.get('/signout/:subscriptionId', (req, res) => {
   res.redirect('https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=' + redirectUri);
 });
 
+function transferAccount(validationCode, initAccount, email, ipAddress) {
+  return new Promise(async(resolve, reject) => {
+    try {
+      let isAllowed = await checkValidation(validationCode, initAccount);
+      if (isAllowed) {
+        let vula = new VulaWebService();
+
+        let userDetails = await vula.getUserByEmail(email);             //get LDAP user details
+        let tAccountVulaDetails = await vula.getUserByEid(initAccount); //get Vula details for T-account. We compare supplied email against the T-account's email
+                                                                        //These two emails match if the T-account and UCT staff number belong to the same person
+        if (tAccountVulaDetails.vula.email !== email) {
+          throw new Error("accounts do not match, aborting");
+        }
+        userDetails.fullname = userDetails.vula.fullname = userDetails.ldap[0].preferredname + ' ' + userDetails.ldap[0].sn;
+
+        let userSeries = await ocConsumer.getPersonalSeries(email);
+        if (!userSeries) {
+          throw new Error("no OC series for " + email);
+        }
+        await ocConsumer.replaceUserInSeriesACL(userSeries.identifier, initAccount, userDetails.vula.username);
+        await ocConsumer.updateUserDetailsForSeries(userSeries.identifier, userDetails.vula);
+        let obsToolCreation = await vula.addOBSTool(userDetails.vula.username, userDetails.vula.siteId, userSeries.identifier);
+        await vula.close();
+        vula = null;
+        logAccountTransfer(validationCode, initAccount, ipAddress, true);
+        resolve(true);
+      }
+      else {
+        console.log('failed to switch');
+        resolve(false);
+      }
+    } catch(e) {
+      reject(e);
+    }
+  });
+}
+
+function appendAdditionalUserDetails(series) {
+  //The description field from the series metadata will have the user's UCT email address
+  series.email = null;
+  let emailRegexResult = /\((.*)@uct.ac.za\)/.exec(series.description);
+  if (emailRegexResult) {
+    series.email = emailRegexResult[0].replace("(", "").replace(")", "");
+  }
+  let accountRegex = /^[a-zA-Z0-9]+$/;
+  if (accountRegex.exec(series.creator)) {
+    series.account = (accountRegex.exec(series.creator))[0];
+  }
+  else {
+    series.account = series.organizers
+                       .filter(organizer => accountRegex.exec(organizer))
+                       .map(organizer => (accountRegex.exec(organizer))[0])
+                       .reduce((main, cur) => main = main || cur, null);
+  }
+  return series;
+}
+
 function makeWebhookSubscription(token) {
   return new Promise((resolve, reject) => {
     subscriptionConfiguration.expirationDateTime = new Date(Date.now() + 4229 * 60 * 1000).toISOString();
-
     postData(
       '/v1.0/subscriptions',
       token.accessToken || token.token,
@@ -419,7 +578,7 @@ function makeWebhookSubscription(token) {
           subscriptionData.userId = token.userId || token.account;
 
           saveSubscription(subscriptionData, null)
-            .then(() => resolve())
+            .then(() => resolve(subscriptionData))
             .catch(err => reject("could not save subscription: " + err));
         } else if (requestError) {
           reject(requestError);
@@ -489,7 +648,6 @@ function convertToUTC(dateStr) {
     let d = new Date(dateStr);
     return `${d.getUTCFullYear()}-${(d.getUTCMonth() < 9 ? '0' : '') + (d.getUTCMonth() + 1)}-${(d.getUTCDate() < 10 ? '0' : '') + d.getUTCDate()}T${(d.getUTCHours() < 10 ? '0': '') + d.getUTCHours()}:${(d.getUTCMinutes() < 10 ? '0' : '') + d.getUTCMinutes()}`;
   } catch(e) {
-    console.log('falling back on date', e);
     return getCurrentTime();
   }
 }

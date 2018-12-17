@@ -70,6 +70,7 @@ listenRouter.post('/', (req, res, next) => {
       // However, you should still return the same status that you'd
       // return to Microsoft Graph to not alert possible impostors
       // that you have discovered them.
+      console.log('some weird thing here');
       status = 202;
     }
   }
@@ -135,13 +136,17 @@ export function prepareSites(info) {
             siteId: userDetails.vula.siteId,
              email: userDetails.vula.email
         };
+        console.log(ocSetup);
         let ocSeries = await ocConsumer.createUserSeries(ocSetup);
+        console.log(ocSeries);
         let obsToolCreation = await vula.addOBSTool(userDetails.vula.username, userDetails.vula.siteId, ocSeries.identifier);
         console.log('OBS tool creation for ' + email + ': ', obsToolCreation);
         await vula.close();
         vula = null;
-        let formattedEmail = await mailTemplate('obs', {fullname: ocSetup.fullname, UCTAccount: ocSetup.username});
-        sendMail(ocSetup.email, 'Welcome to the One Button Studio', formattedEmail, {contentType: 'HTML'});
+        let formattedEmail = await mailTemplate(info.host || 'obs', {fullname: ocSetup.fullname, UCTAccount: ocSetup.username});
+        if (formattedEmail) {
+          sendMail(ocSetup.email, formattedEmail.subject, formattedEmail.body, {contentType: 'HTML'});
+        }
         let seriesDetails = await ocConsumer.getSeriesById(ocSeries.identifier);
         resolve(seriesDetails);
       } catch(e) {

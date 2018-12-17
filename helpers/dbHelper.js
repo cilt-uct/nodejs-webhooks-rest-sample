@@ -236,9 +236,14 @@ export function saveAccessToken(tokenData) {
 
 export function saveFromRefreshToken(tokenData) {
   return new Promise((resolve, reject) => {
+    console.log('got this refresh token', tokenData);
     pool.getConnection((err, connection) => {
       if (err) {
         return reject(err);
+      }
+
+      if (!tokenData || !tokenData.access_token || tokenData.access_token.split('.').length < 1) {
+        return reject("token not properly formatted");
       }
 
       let base64payload = (tokenData.access_token.split('.'))[1];
@@ -266,4 +271,118 @@ export function saveFromRefreshToken(tokenData) {
 }
 
 export function saveMeetingDetails(details) {
+}
+
+export function getNotifiedTAccounts() {
+  return new Promise(async (resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        return reject(err);
+      }
+
+      connection.query("select user_id from user_notifications where notification_desc = ? and (" +
+        " notification_date >= date_sub(curdate(), interval 1 week) or " + //user was notified this week
+        " notification_count > 2)", //user is deemed notified if they've receive 3 notifications already
+        ['t_account_uct_account_transfer'],
+        (e, results) => {
+          if (e) {
+            return reject(e);
+          }
+
+          resolve(results);
+        }
+      );
+    });
+  });
+}
+
+export function saveTAccountPortValidationString(user, validationString) {
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        return reject(err);
+      }
+
+      connection.query("insert into port_t_account_authorisation (t_account, validation_string) values (?,?)",
+        [user, validationString],
+        (e, results) => {
+          if (e) {
+            return reject(e);
+          }
+
+          resolve(true);
+        }
+      );
+    });
+  });
+}
+
+export function checkValidation(code, account) {
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        return reject(err);
+      }
+
+      connection.query("select t_account from port_t_account_authorisation where t_account = ? and validation_string = ? and user_accepted is null and user_denied is null", [account, code],
+        //TODO: think about this query... whether user_[accepted|denied] is necessary
+        (e, results) => {
+          if (e) {
+            return reject(e);
+          }
+
+          resolve(results.length > 0);
+        }
+      );
+    });
+  });
+}
+
+export function logAccountTransfer(code, account, ipAddress, isTransferred) {
+  //TODO: clear out rows of users who have transferred accounts
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        return reject(err);
+      }
+
+      let query = "update port_t_account_authorisation set user_affirmation_ip = ?, %chosen% = ? where t_account = ? and validation_string = ?"
+                  .replace("%chosen%", isTransferred ? 'user_accepted' : 'user_denied');
+      connection.query(query, [ipAddress, 1, account, code],
+        (e, results) => {
+          if (e) {
+            console.log('could not update for ' + account + ' ' + code + ':', e);
+          }
+
+          resolve();
+        }
+      );
+    });
+  });
+}
+
+export function logTAccountNotification(userId, userName, userEmail) {
+  //TODO: clear out rows of users who have transferred accounts
+  return new Promise((resolve, reject) => {
+    pool.getConnection((err, connection) => {
+      if (err) {
+        return reject(err);
+      }
+
+      let query = "insert into user_notifications (user_id, user_fullname, user_email, notification_desc) values (?, ?, ?, 't_account_uct_account_transfer') " +
+                  "on duplicate key update notification_count = notification_count + 1";
+      connection.query(query, [userId, userName, userEmail],
+        (e, results) => {
+          if (e) {
+            console.log('could not update last notification date for ' + userId + ':', e);
+          }
+
+          resolve();
+        }
+      );
+    });
+  });
+}
+
+export function saveNotifiedTAccount(account) {
 }

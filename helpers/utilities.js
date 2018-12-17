@@ -56,6 +56,13 @@ export function mailTemplate(templateName, opts) {
     //  return obstemplate or something (initEmail right now)
     //case 'clinskills1':
     //  return clinskillstemplate or something
+    case 'clinskills1':
+    case 'clinskills2':
+    case 'clinskills3':
+    case 'clinskills4':
+      return null;
+    case 'taccount':
+      return portingTAccountEmail(opts);
     default:
       return initEmail(opts);
   }
@@ -75,7 +82,33 @@ function initEmail(opts) {
       if (opts.UCTAccount) {
         template = template.replace(/vula_account/g, `~${opts.UCTAccount}`);
       }
-      resolve(template);
+      resolve({body: template, subject: 'Welcome to the One Button Studio'});
+    });
+  });
+}
+
+function portingTAccountEmail(opts) {
+  opts = opts || {};
+  return new Promise((resolve, reject) => {
+    fs.readFile('./views/taccount_email_template', 'utf8', (err, template) => {
+      if (err) {
+        return reject(err);
+      }
+
+      if (opts.fullname) {
+        template = template.replace(/UCT Colleague/g, opts.fullname);
+      }
+      if (opts.validationString) {
+        template = template.replace(/%validationString%/g, opts.validationString);
+      }
+      if (opts.account) {
+        template = template.replace(/%account%/g, opts.account);
+      }
+      if (opts.email) {
+        template = template.replace(/%email%/g, opts.email);
+      }
+
+      resolve({body: template, subject: 'Transfer your video series to your UCT account'});
     });
   });
 }
@@ -121,14 +154,17 @@ export function sendMail(toArr, subject, body, opts) {
         JSON.stringify(reqBody),
         (requestError, mailData) => {
           if (requestError) {
-            return console.log('got an error sending mail', requestError);
+            console.log('got an error sending mail', requestError);
+            return reject(requestError);
           }
 
           console.log('successfully sent mail', JSON.stringify(reqBody.message.toRecipients), mailData);
+          resolve(true);
         }
       );
     } catch(e) {
-      console.log('got an error', e);
+      console.log(e);
+      reject(e);
     }
   });
 }

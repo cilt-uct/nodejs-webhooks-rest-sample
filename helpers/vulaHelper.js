@@ -259,6 +259,9 @@ VulaWebService.prototype = {
       })();
     });
   },
+  getUserByEid: function(eid) {
+    return this.getUserByEmail(eid);
+  },
   getUserHome: function(user) {
     return new Promise((resolve, reject) => {
       if (!this.sakaiClient) {
