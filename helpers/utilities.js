@@ -3,6 +3,8 @@ import https from 'https';
 import { getAccessToken } from './dbHelper';
 import { postData } from './requestHelper';
 
+const sendmailALT = require('sendmail')({silent: true});
+
 export function httpsRequest(url, opts) {
   return new Promise((resolve, reject) => {
     opts = opts || {};
@@ -155,9 +157,25 @@ export function sendMail(toArr, subject, body, opts) {
         (requestError, mailData) => {
           if (requestError) {
             console.log('got an error sending mail', requestError);
-            return reject(requestError);
+            try {
+              console.log('Alternative mail solution');
+              sendmailALT({
+                  from: 'no-reply@vula.uct.ac.za',
+                  replyTo: 'one_button_studio@uct.ac.za',
+                  to: toArr.join(','),
+                  bcc: 'corne.oosthuizen@uct.ac.za',
+                  subject: subject,
+                  html: body,
+              }, function(err, reply) {
+                  console.log(err && err.stack);
+                  console.dir(reply);
+              });
+              resolve(true);
+            } catch(e) {
+              console.log(e);
+              reject(e);
+            }
           }
-
           console.log('successfully sent mail', JSON.stringify(reqBody.message.toRecipients), mailData);
           resolve(true);
         }
@@ -168,3 +186,4 @@ export function sendMail(toArr, subject, body, opts) {
     }
   });
 }
+

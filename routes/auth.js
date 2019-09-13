@@ -229,12 +229,13 @@ authRouter.get('/event', (req, res) => {
             }
 
           } else if (requestError) {
-            if (requestError.error.code === 'InvalidAuthenticationToken') {
-              //Token has expired. notify LT team
-              isTokenExpired = true;
-              lastTokenCheck = (new Date()).getTime();
-            }
-
+	    if (requestError.error) {
+	      if (requestError.error.code === 'InvalidAuthenticationToken') {
+                //Token has expired. notify LT team
+	        isTokenExpired = true;
+                lastTokenCheck = (new Date()).getTime();
+              }
+	    } 
             res.status(500).send(requestError);
           }
         }

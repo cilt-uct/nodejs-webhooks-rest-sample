@@ -236,7 +236,6 @@ export function saveAccessToken(tokenData) {
 
 export function saveFromRefreshToken(tokenData) {
   return new Promise((resolve, reject) => {
-    console.log('got this refresh token', tokenData);
     pool.getConnection((err, connection) => {
       if (err) {
         return reject(err);

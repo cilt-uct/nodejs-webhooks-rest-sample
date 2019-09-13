@@ -234,6 +234,8 @@ VulaWebService.prototype = {
     });
   },*/
   getUserByEmail: function(email) {
+    console.log('Fetching: https://srvslscet001.uct.ac.za/optout/search/vula/'+ email);
+
     return new Promise((resolve, reject) => {
       (async () => {
         let result = await httpsRequest(`https://srvslscet001.uct.ac.za/optout/search/vula/${email}`);
@@ -253,7 +255,7 @@ VulaWebService.prototype = {
             })();
           }, 300);
         } catch(err) {
-           console.log('this error', err);
+           console.log('this error: ', err);
            reject(err);
         }
       })();

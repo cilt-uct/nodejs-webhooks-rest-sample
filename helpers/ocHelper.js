@@ -178,8 +178,31 @@ exports.ocConsumer = {
         }
 
         try {
-          let result = JSON.parse(body);
-          resolve(result);
+          if (body.indexOf("Cannot find an series with id") >= 0) {
+
+            // try again
+            return new Promise((resolve, reject) => {
+              let uri = `https://${hostname}/api/series/${id}`;
+              let options = Object.assign({uri: uri}, ocDigestHeader, credentials);
+              request(options, (err, req, body) => {
+                if (err) {
+                  return reject(err);
+                }
+
+                try {
+                  let result = JSON.parse(body);
+                  resolve(result);
+                } catch(e) {
+                  console.log(e, body);
+                  reject('server returned with unexpected content type');
+                }
+              });
+            });
+
+          } else {
+            let result = JSON.parse(body);
+            resolve(result);
+          }
         } catch(e) {
           console.log(e, body);
           reject('server returned with unexpected content type');
@@ -304,3 +327,4 @@ function getACL(opts) {
   ];
   return acl;
 }
+

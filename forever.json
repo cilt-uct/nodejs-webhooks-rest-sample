@@ -1,0 +1,13 @@
+[
+  {
+    "uid": "node-obsapi",
+    "append": true,
+    "watch": false,
+    "script": "app.js",
+    "sourceDir": "/var/www/node-obsapi/",
+    "workingDir": "/var/www/node-obsapi/",
+    "logFile": "/var/log/node-obsapi.log",
+    "outFile": "/var/www/node-obsapi/out.log",
+    "errFile": "/var/log/node-obsapi-error.log"
+  }
+]

@@ -13,6 +13,8 @@ export const listenRouter = express.Router();
 
 let notificationTimeouts = {};
 
+const timeout = ms => new Promise(res => setTimeout(res, ms))
+
 listenRouter.get('/', (req, res) => {
   res.send("you're at notify endpoint");
 });
@@ -92,10 +94,10 @@ function processNotification(subscriptionId, resource, res, next) {
               prepareSites(endpointData.organizer);
             } else if (requestError) {
               //Some errors here are for declined events.
-              //Example: { error: 
+              //Example: { error:
               //   { code: 'ErrorItemNotFound',
               //     message: 'The specified object was not found in the store.',
-              //     innerError: 
+              //     innerError:
               //      { 'request-id': 'f0f8033a-7814-4233-b249-b8073f56babc',
               //        date: '2018-09-20T13:29:42' } } }
               res.status(500);
@@ -147,6 +149,7 @@ export function prepareSites(info) {
         if (formattedEmail) {
           sendMail(ocSetup.email, formattedEmail.subject, formattedEmail.body, {contentType: 'HTML'});
         }
+        await timeout(1000); // wait a bit for external api to catch up
         let seriesDetails = await ocConsumer.getSeriesById(ocSeries.identifier);
         resolve(seriesDetails);
       } catch(e) {
@@ -159,3 +162,4 @@ export function prepareSites(info) {
     }
   });
 }
+
